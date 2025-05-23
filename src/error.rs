@@ -58,6 +58,9 @@ pub enum Error {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
+    #[error("UUID parsing error: {0}")]
+    UuidParse(String),
+
     #[cfg(target_os = "android")]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),

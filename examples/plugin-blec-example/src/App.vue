@@ -6,8 +6,8 @@ import { onMounted, ref } from 'vue';
 import BleDev from './components/BleDev.vue'
 import { invoke } from '@tauri-apps/api/core'
 
-
 const devices = ref<BleDevice[]>([])
+const device = ref<BleDevice | null>(null)
 const connected = ref(false)
 const scanning = ref(false)
 
@@ -19,21 +19,18 @@ onMounted(async () => {
   })
 })
 
-// const SERVICE_UUID = 'A07498CA-AD5B-474E-940D-16F1FBE7E8CD'
-const CHARACTERISTIC_UUID = '51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B'
-
 const sendData = ref('')
 const recvData = ref('')
+const characteristicUuid = ref('51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B')
 const rustTest = ref(false)
-
 
 const notifyData = ref('')
 async function subscribe() {
   if (notifyData.value) {
-    unsubscribe(CHARACTERISTIC_UUID)
+    unsubscribe(characteristicUuid, device.address)
     notifyData.value = ''
   } else {
-    subscribeString(CHARACTERISTIC_UUID, (data: string) => notifyData.value = data)
+    subscribeString(characteristicUuid, device.address, (data: string) => notifyData.value = data)
   }
 }
 
@@ -62,7 +59,7 @@ const showServices = ref(false);
         <div></div>
       </div>
     </button>
-    <button v-else :onclick="() => startScan((dev: BleDevice[]) => devices = dev, 10000)" style="margin-bottom: 5px;">
+    <button v-else :onclick="() => startScan((dev: BleDevice[]) => devices = dev, 5000)" style="margin-bottom: 5px;">
       Start Scan
     </button>
     <div v-if="connected">
@@ -76,26 +73,30 @@ const showServices = ref(false);
         <button :onclick="test" style="margin-bottom: 5px;">Test Rust communication</button>
       </div>
       <div class="row">
-        <input v-model="sendData" placeholder="Send data" />
-        <button class="ml" :onclick="() => sendString(CHARACTERISTIC_UUID, sendData)">Send</button>
+        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
+        <button class="ml" :onclick="async () => recvData = await readString(characteristicUuid, device.address)">Read</button>
       </div>
       <div class="row">
-        <input v-model="recvData" readonly />
-        <button class="ml" :onclick="async () => recvData = await readString(CHARACTERISTIC_UUID)">Read</button>
+        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
+        <button class="ml" :onclick="() => sendString(device.address, characteristicUuid, sendData)">Send</button>
       </div>
       <div class="row">
-        <input v-model="notifyData" readonly />
+        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
         <button class="ml" :onclick="subscribe">{{ notifyData ? "Unsubscribe" : "Subscribe" }}</button>
       </div>
     </div>
     <div v-else>
       <label id="show-services-label" for="show-services">Show Services</label>
       <input v-model="showServices" type="checkbox" id="show-services" />
-      <div v-for="device in devices" class="row">
-        <BleDev :key="device.address" :device="device"
+      <div v-for="bleDevice in devices" class="row">
+        <BleDev :key="bleDevice.address" :device="bleDevice"
           :show-services="showServices" 
           :onclick="async () => {
-            await connect(device.address, () => console.log('disconnected'));
+            device = bleDevice;
+            await connect(bleDevice.address, () => {
+              console.log('disconnected');
+              device = null;
+            });
             console.log('connect command returned');
           }"
         />
@@ -285,8 +286,10 @@ button:active {
   100% {
     transform: rotate(360deg);
   }
+}
 
-
-
+.uuid-input {
+  margin-left: 5px;
+  width: 250px;
 }
 </style>

@@ -5,7 +5,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::get_handler;
+use crate::{get_handler, Error};
 use crate::models::{BleDevice, ScanFilter, WriteType};
 
 #[command]
@@ -143,16 +143,20 @@ pub(crate) async fn scanning_state<R: Runtime>(
 #[command]
 pub(crate) async fn send<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     data: Vec<u8>,
     write_type: WriteType,
     address: String,
 ) -> Result<()> {
     let handler = get_handler()?;
+    
+    // Convert string to UUID
+    let uuid = Uuid::parse_str(&characteristic)
+        .map_err(|e| Error::UuidParse(e.to_string()))?;
 
     info!("Sending data to device {}: {:?}", address, data);
     handler
-        .send_data(&address, characteristic, &data, write_type)
+        .send_data(&address, uuid, &data, write_type)
         .await?;
 
     Ok(())
@@ -161,7 +165,7 @@ pub(crate) async fn send<R: Runtime>(
 #[command]
 pub(crate) async fn send_string<R: Runtime>(
     app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     data: String,
     write_type: WriteType,
     address: String,
@@ -173,18 +177,24 @@ pub(crate) async fn send_string<R: Runtime>(
 #[command]
 pub(crate) async fn read<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     address: String,
 ) -> Result<Vec<u8>> {
     let handler = get_handler()?;
-    let data = handler.read_data(&address, characteristic).await?;
+    info!("Reading data from device: {}", address);
+    info!("Characteristic: {}", characteristic);
+    // Convert string to UUID
+    let uuid = Uuid::parse_str(&characteristic)
+        .map_err(|e| Error::UuidParse(e.to_string()))?;
+    info!("UUID: {}", uuid);
+    let data = handler.read_data(&address, uuid).await?;
     Ok(data)
 }
 
 #[command]
 pub(crate) async fn read_string<R: Runtime>(
     app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     address: String,
 ) -> Result<String> {
     let data = read(app, characteristic, address).await?;
@@ -192,11 +202,15 @@ pub(crate) async fn read_string<R: Runtime>(
 }
 
 async fn subscribe_channel(
-    characteristic: Uuid,
+    characteristic: String,
     address: String,
 ) -> Result<mpsc::Receiver<Vec<u8>>> {
     let handler = get_handler()?;
     let (tx, rx) = tokio::sync::mpsc::channel(1);
+    
+    // Convert string to UUID
+    let uuid = Uuid::parse_str(&characteristic)
+        .map_err(|e| Error::UuidParse(e.to_string()))?;
 
     let callback = move |data: Vec<u8>| {
         tx.try_send(data)
@@ -204,7 +218,7 @@ async fn subscribe_channel(
     };
 
     handler
-        .subscribe(&address, characteristic, callback)
+        .subscribe(&address, uuid, callback)
         .await?;
 
     Ok(rx)
@@ -213,7 +227,7 @@ async fn subscribe_channel(
 #[command]
 pub(crate) async fn subscribe<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     on_data: Channel<Vec<u8>>,
     address: String,
 ) -> Result<()> {
@@ -231,9 +245,9 @@ pub(crate) async fn subscribe<R: Runtime>(
 #[command]
 pub(crate) async fn subscribe_string<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: Uuid,
-    on_data: Channel<String>,
+    characteristic: String,
     address: String,
+    on_data: Channel<String>,
 ) -> Result<()> {
     let mut rx = subscribe_channel(characteristic, address).await?;
     async_runtime::spawn(async move {
@@ -250,12 +264,16 @@ pub(crate) async fn subscribe_string<R: Runtime>(
 #[command]
 pub(crate) async fn unsubscribe<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: Uuid,
+    characteristic: String,
     address: String,
 ) -> Result<()> {
     let handler = get_handler()?;
+    
+    // Convert string to UUID
+    let uuid = Uuid::parse_str(&characteristic)
+        .map_err(|e| Error::UuidParse(e.to_string()))?;
 
-    handler.unsubscribe(&address, characteristic).await?;
+    handler.unsubscribe(&address, uuid).await?;
 
     Ok(())
 }

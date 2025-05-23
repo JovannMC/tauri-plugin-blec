@@ -281,11 +281,8 @@ impl Handler {
 
         // Start notification listener
         let notify_listeners = Vec::new();
-        let listen_handle = async_runtime::spawn(listen_notify(
-            peripheral.clone(),
-            address.to_string(),
-            self.clone(),
-        ));
+        let listen_handle =
+            async_runtime::spawn(listen_notify(peripheral.clone(), address.to_string(), self));
 
         let device_state = DeviceState {
             peripheral: peripheral.clone(),
@@ -516,13 +513,17 @@ impl Handler {
         // Create filter from scan_filter
         let filter = match &scan_filter {
             ScanFilter::None => btleplug::api::ScanFilter { services: vec![] },
-            ScanFilter::Service(uuid) => btleplug::api::ScanFilter { services: vec![*uuid] },
+            ScanFilter::Service(uuid) => btleplug::api::ScanFilter {
+                services: vec![*uuid],
+            },
             ScanFilter::AnyService(uuids) | ScanFilter::AllServices(uuids) => {
-            btleplug::api::ScanFilter { services: uuids.clone() }
+                btleplug::api::ScanFilter {
+                    services: uuids.clone(),
+                }
             }
             // ManufacturerData filters can't be mapped to btleplug::ScanFilter directly
             ScanFilter::ManufacturerData(_, _) | ScanFilter::ManufacturerDataMasked(_, _, _) => {
-            btleplug::api::ScanFilter { services: vec![] }
+                btleplug::api::ScanFilter { services: vec![] }
             }
         };
 
@@ -626,6 +627,12 @@ impl Handler {
     pub async fn stop_scan(&self) -> Result<(), Error> {
         debug!("Stopping ongoing scan");
 
+        // Get the channels before acquiring lock to avoid deadlock
+        let scan_update_channels = {
+            let state = self.state.lock().await;
+            state.scan_update_channels.clone()
+        };
+
         let mut state = self.state.lock().await;
         if let Some(task) = state.scan_task.take() {
             if !task.is_finished() {
@@ -639,8 +646,15 @@ impl Handler {
             warn!("Failed to stop scan: {e}");
         }
 
-        self.send_scan_update(false).await;
+        // Send updates without holding the lock
+        for tx in &scan_update_channels {
+            if let Err(e) = tx.send(false).await {
+                warn!("Failed to send scan update: {e}");
+            }
+        }
+        let _ = self.scanning_tx.send(false);
 
+        debug!("Scan stopped");
         Ok(())
     }
 
@@ -713,10 +727,11 @@ impl Handler {
     /// ```no_run
     /// use tauri::async_runtime;
     /// use uuid::{Uuid,uuid};
+    /// const ADDRESS = "00:00:00:00:00:00";
     /// const CHARACTERISTIC_UUID: Uuid = uuid!("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B");
     /// async_runtime::block_on(async {
     ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let response = handler.recv_data(CHARACTERISTIC_UUID).await.unwrap();
+    ///     let response = handler.read(ADDRESS, CHARACTERISTIC_UUID).await.unwrap();
     /// });
     /// ```
     pub async fn read_data(&self, address: &str, c: Uuid) -> Result<Vec<u8>, Error> {
@@ -837,8 +852,12 @@ impl Handler {
     }
 
     async fn send_scan_update(&self, scanning: bool) {
-        let state = self.state.lock().await;
-        for tx in &state.scan_update_channels {
+        let channels = {
+            let state = self.state.lock().await;
+            state.scan_update_channels.clone()
+        };
+
+        for tx in &channels {
             if let Err(e) = tx.send(scanning).await {
                 warn!("Failed to send scan update: {e}");
             }

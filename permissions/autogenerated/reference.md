@@ -10,9 +10,9 @@ Default permissions for the plugin
 - `allow-disconnect`
 - `allow-connection-state`
 - `allow-send`
-- `allow-recv`
+- `allow-read`
 - `allow-send-string`
-- `allow-recv-string`
+- `allow-read-string`
 - `allow-subscribe`
 - `allow-subscribe-string`
 - `allow-unsubscribe`
@@ -153,6 +153,58 @@ Enables the ping command without any pre-configured scope.
 <td>
 
 Denies the ping command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:allow-read`
+
+</td>
+<td>
+
+Enables the read command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:deny-read`
+
+</td>
+<td>
+
+Denies the read command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:allow-read-string`
+
+</td>
+<td>
+
+Enables the read_string command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:deny-read-string`
+
+</td>
+<td>
+
+Denies the read_string command without any pre-configured scope.
 
 </td>
 </tr>
