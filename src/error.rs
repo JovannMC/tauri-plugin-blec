@@ -13,6 +13,9 @@ pub enum Error {
     #[error("Characteristic {0} not available")]
     CharacNotAvailable(String),
 
+    #[error("No devices discovered")]
+    NoDevicesDiscovered,
+
     #[error("No device connected")]
     NoDeviceConnected,
 
@@ -42,6 +45,18 @@ pub enum Error {
 
     #[error("Failed to join Task: {0}")]
     JoinError(#[from] tokio::task::JoinError),
+
+    #[error("Scan already in progress")]
+    ScanAlreadyRunning,
+
+    #[error("Scan failed to complete")]
+    ScanFailed,
+
+    #[error("Operation timed out")]
+    OperationTimeout,
+
+    #[error("Operation failed: {0}")]
+    OperationFailed(String),
 
     #[cfg(target_os = "android")]
     #[error(transparent)]

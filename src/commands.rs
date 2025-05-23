@@ -11,22 +11,21 @@ use crate::models::{BleDevice, ScanFilter, WriteType};
 #[command]
 pub(crate) async fn scan<R: Runtime>(
     _app: AppHandle<R>,
+    filter: Option<ScanFilter>,
     timeout: u64,
     on_devices: Channel<Vec<BleDevice>>,
 ) -> Result<()> {
     tracing::info!("Scanning for BLE devices");
     let handler = get_handler()?;
-    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-    async_runtime::spawn(async move {
-        while let Some(devices) = rx.recv().await {
-            on_devices
-                .send(devices)
-                .expect("failed to send device to the front-end");
-        }
-    });
-    handler
-        .discover(Some(tx), timeout, ScanFilter::None)
-        .await?;
+
+    // Start scan and discover devices
+    let devices = handler.start_scan(filter, timeout).await?;
+
+    // Send devices to frontend
+    on_devices
+        .send(devices)
+        .expect("failed to send devices to the front-end");
+
     Ok(())
 }
 
@@ -46,43 +45,66 @@ pub(crate) async fn connect<R: Runtime>(
 ) -> Result<()> {
     tracing::info!("Connecting to BLE device: {:?}", address);
     let handler = get_handler()?;
-    let disconnct_handler = move || {
+    let disconnect_handler = move || {
         on_disconnect
             .send(())
             .expect("failed to send disconnect event to the front-end");
     };
-    handler.connect(&address, disconnct_handler.into()).await?;
+    handler.connect(&address, disconnect_handler.into()).await?;
     Ok(())
 }
 
 #[command]
-pub(crate) async fn disconnect<R: Runtime>(_app: AppHandle<R>) -> Result<()> {
-    tracing::info!("Disconnecting from BLE device");
+pub(crate) async fn disconnect<R: Runtime>(
+    _app: AppHandle<R>,
+    address: Option<String>,
+) -> Result<()> {
     let handler = get_handler()?;
-    handler.disconnect().await?;
+
+    if let Some(address) = address {
+        tracing::info!("Disconnecting from BLE device: {}", address);
+        handler.disconnect(&address).await?;
+    } else {
+        tracing::info!("Disconnecting from all BLE devices");
+        handler.disconnect_all().await?;
+    }
+
     Ok(())
 }
 
 #[command]
 pub(crate) async fn connection_state<R: Runtime>(
     _app: AppHandle<R>,
-    update: Channel<bool>,
+    update: Channel<(String, bool)>,
 ) -> Result<()> {
     let handler = get_handler()?;
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+    // Set up the connection update channel
     handler.set_connection_update_channel(tx).await;
-    update
-        .send(handler.is_connected())
-        .expect("failed to send connection state");
+
+    // Send initial state
+    let connected_devices = handler.connected_devices().await;
+    for address in connected_devices {
+        update
+            .send((address.clone(), true))
+            .expect("failed to send connection state");
+    }
+
+    // Listen for connection updates
     async_runtime::spawn(async move {
-        while let Some(connected) = rx.recv().await {
-            debug!("Sending connection update to frontend: {connected}");
+        while let Some((address, connected)) = rx.recv().await {
+            debug!(
+                "Sending connection update to frontend: {} {}",
+                address, connected
+            );
             update
-                .send(connected)
+                .send((address, connected))
                 .expect("failed to send connection state to the front-end");
         }
         warn!("Connection state channel closed");
     });
+
     Ok(())
 }
 
@@ -93,19 +115,30 @@ pub(crate) async fn scanning_state<R: Runtime>(
 ) -> Result<()> {
     let handler = get_handler()?;
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+    // Set up the scanning update channel
     handler.set_scanning_update_channel(tx).await;
+
+    // Send initial state
     update
         .send(handler.is_scanning().await)
         .expect("failed to send scanning state");
+
+    // Listen for scanning updates
     async_runtime::spawn(async move {
         while let Some(scanning) = rx.recv().await {
+            debug!("Sending scanning update to frontend: {}", scanning);
             update
                 .send(scanning)
                 .expect("failed to send scanning state to the front-end");
         }
+        warn!("Scanning state channel closed");
     });
+
     Ok(())
 }
+
+// Device-specific commands
 
 #[command]
 pub(crate) async fn send<R: Runtime>(
@@ -113,18 +146,16 @@ pub(crate) async fn send<R: Runtime>(
     characteristic: Uuid,
     data: Vec<u8>,
     write_type: WriteType,
+    address: String,
 ) -> Result<()> {
-    info!("Sending data: {data:?}");
     let handler = get_handler()?;
-    handler.send_data(characteristic, &data, write_type).await?;
-    Ok(())
-}
 
-#[command]
-pub(crate) async fn recv<R: Runtime>(_app: AppHandle<R>, characteristic: Uuid) -> Result<Vec<u8>> {
-    let handler = get_handler()?;
-    let data = handler.recv_data(characteristic).await?;
-    Ok(data)
+    info!("Sending data to device {}: {:?}", address, data);
+    handler
+        .send_data(&address, characteristic, &data, write_type)
+        .await?;
+
+    Ok(())
 }
 
 #[command]
@@ -133,39 +164,60 @@ pub(crate) async fn send_string<R: Runtime>(
     characteristic: Uuid,
     data: String,
     write_type: WriteType,
+    address: String,
 ) -> Result<()> {
     let data = data.as_bytes().to_vec();
-    send(app, characteristic, data, write_type).await
+    send(app, characteristic, data, write_type, address).await
 }
 
 #[command]
-pub(crate) async fn recv_string<R: Runtime>(
+pub(crate) async fn read<R: Runtime>(
+    _app: AppHandle<R>,
+    characteristic: Uuid,
+    address: String,
+) -> Result<Vec<u8>> {
+    let handler = get_handler()?;
+    let data = handler.read_data(&address, characteristic).await?;
+    Ok(data)
+}
+
+#[command]
+pub(crate) async fn read_string<R: Runtime>(
     app: AppHandle<R>,
     characteristic: Uuid,
+    address: String,
 ) -> Result<String> {
-    let data = recv(app, characteristic).await?;
+    let data = read(app, characteristic, address).await?;
     Ok(String::from_utf8(data).expect("failed to convert data to string"))
 }
 
-async fn subscribe_channel(characteristic: Uuid) -> Result<mpsc::Receiver<Vec<u8>>> {
+async fn subscribe_channel(
+    characteristic: Uuid,
+    address: String,
+) -> Result<mpsc::Receiver<Vec<u8>>> {
     let handler = get_handler()?;
     let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+    let callback = move |data: Vec<u8>| {
+        tx.try_send(data)
+            .expect("failed to send data to the channel");
+    };
+
     handler
-        .subscribe(characteristic, move |data: Vec<u8>| {
-            info!("subscribe_channel: {:?}", data);
-            tx.try_send(data)
-                .expect("failed to send data to the channel");
-        })
+        .subscribe(&address, characteristic, callback)
         .await?;
+
     Ok(rx)
 }
+
 #[command]
 pub(crate) async fn subscribe<R: Runtime>(
     _app: AppHandle<R>,
     characteristic: Uuid,
     on_data: Channel<Vec<u8>>,
+    address: String,
 ) -> Result<()> {
-    let mut rx = subscribe_channel(characteristic).await?;
+    let mut rx = subscribe_channel(characteristic, address).await?;
     async_runtime::spawn(async move {
         while let Some(data) = rx.recv().await {
             on_data
@@ -181,11 +233,11 @@ pub(crate) async fn subscribe_string<R: Runtime>(
     _app: AppHandle<R>,
     characteristic: Uuid,
     on_data: Channel<String>,
+    address: String,
 ) -> Result<()> {
-    let mut rx = subscribe_channel(characteristic).await?;
+    let mut rx = subscribe_channel(characteristic, address).await?;
     async_runtime::spawn(async move {
         while let Some(data) = rx.recv().await {
-            info!("subscribe_string: {:?}", data);
             let data = String::from_utf8(data).expect("failed to convert data to string");
             on_data
                 .send(data)
@@ -199,15 +251,25 @@ pub(crate) async fn subscribe_string<R: Runtime>(
 pub(crate) async fn unsubscribe<R: Runtime>(
     _app: AppHandle<R>,
     characteristic: Uuid,
+    address: String,
 ) -> Result<()> {
     let handler = get_handler()?;
-    handler.unsubscribe(characteristic).await?;
+
+    handler.unsubscribe(&address, characteristic).await?;
+
     Ok(())
 }
 
 #[command]
 pub(crate) fn check_permissions() -> Result<bool> {
     crate::check_permissions()
+}
+
+#[command]
+pub(crate) async fn get_connected_devices<R: Runtime>(_app: AppHandle<R>) -> Result<Vec<String>> {
+    let handler = get_handler()?;
+    let devices = handler.connected_devices().await;
+    Ok(devices)
 }
 
 pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool {
@@ -219,12 +281,13 @@ pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool {
         connection_state,
         send,
         send_string,
-        recv,
-        recv_string,
+        read,
+        read_string,
         subscribe,
         subscribe_string,
         unsubscribe,
         scanning_state,
-        check_permissions
+        check_permissions,
+        get_connected_devices
     ]
 }
