@@ -1,4 +1,4 @@
-import { Channel, invoke } from '@tauri-apps/api/tauri'
+import { Channel, invoke } from '@tauri-apps/api/core'
 
 export type BleDevice = {
   address: string;
