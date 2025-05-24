@@ -143,10 +143,10 @@ pub(crate) async fn scanning_state<R: Runtime>(
 #[command]
 pub(crate) async fn send<R: Runtime>(
     _app: AppHandle<R>,
+    address: String,
     characteristic: String,
     data: Vec<u8>,
     write_type: WriteType,
-    address: String,
 ) -> Result<()> {
     let handler = get_handler()?;
     
@@ -165,20 +165,20 @@ pub(crate) async fn send<R: Runtime>(
 #[command]
 pub(crate) async fn send_string<R: Runtime>(
     app: AppHandle<R>,
+    address: String,
     characteristic: String,
     data: String,
     write_type: WriteType,
-    address: String,
 ) -> Result<()> {
     let data = data.as_bytes().to_vec();
-    send(app, characteristic, data, write_type, address).await
+    send(app, address, characteristic, data, write_type).await
 }
 
 #[command]
 pub(crate) async fn read<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: String,
     address: String,
+    characteristic: String,
 ) -> Result<Vec<u8>> {
     let handler = get_handler()?;
     info!("Reading data from device: {}", address);
@@ -194,16 +194,16 @@ pub(crate) async fn read<R: Runtime>(
 #[command]
 pub(crate) async fn read_string<R: Runtime>(
     app: AppHandle<R>,
-    characteristic: String,
     address: String,
+    characteristic: String,
 ) -> Result<String> {
     let data = read(app, characteristic, address).await?;
     Ok(String::from_utf8(data).expect("failed to convert data to string"))
 }
 
 async fn subscribe_channel(
-    characteristic: String,
     address: String,
+    characteristic: String,
 ) -> Result<mpsc::Receiver<Vec<u8>>> {
     let handler = get_handler()?;
     let (tx, rx) = tokio::sync::mpsc::channel(1);
@@ -227,9 +227,9 @@ async fn subscribe_channel(
 #[command]
 pub(crate) async fn subscribe<R: Runtime>(
     _app: AppHandle<R>,
+    address: String,
     characteristic: String,
     on_data: Channel<Vec<u8>>,
-    address: String,
 ) -> Result<()> {
     let mut rx = subscribe_channel(characteristic, address).await?;
     async_runtime::spawn(async move {
@@ -245,8 +245,8 @@ pub(crate) async fn subscribe<R: Runtime>(
 #[command]
 pub(crate) async fn subscribe_string<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: String,
     address: String,
+    characteristic: String,
     on_data: Channel<String>,
 ) -> Result<()> {
     let mut rx = subscribe_channel(characteristic, address).await?;
@@ -264,8 +264,8 @@ pub(crate) async fn subscribe_string<R: Runtime>(
 #[command]
 pub(crate) async fn unsubscribe<R: Runtime>(
     _app: AppHandle<R>,
-    characteristic: String,
     address: String,
+    characteristic: String,
 ) -> Result<()> {
     let handler = get_handler()?;
     

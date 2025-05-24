@@ -124,112 +124,112 @@ export async function connect(address: string, onDisconnect: (() => void) | null
 
 /**
  * Write a Uint8Array to a BLE characteristic on a specific device
+ * @param address Address of the device to write to
  * @param characteristic UUID of the characteristic to write to
  * @param data Data to write to the characteristic
  * @param writeType Whether to write with response
- * @param address Optional address of the device to write to. If not provided, writes to the first connected device
  */
 export async function send(
+  address: string,
   characteristic: string, 
   data: Uint8Array, 
-  writeType: 'withResponse' | 'withoutResponse' = 'withResponse',
-  address: string
+  writeType: 'withResponse' | 'withoutResponse' = 'withResponse'
 ) {
   await invoke('plugin:blec|send', {
+    address,
     characteristic,
     data,
-    writeType,
-    address
+    writeType
   })
 }
 
 /**
  * Write a string to a BLE characteristic on a specific device
+ * @param address Address of the device to write to
  * @param characteristic UUID of the characteristic to write to
  * @param data String data to write to the characteristic
  * @param writeType Whether to write with response
- * @param address Optional address of the device to write to. If not provided, writes to the first connected device
  */
 export async function sendString(
+  address: string,
   characteristic: string, 
   data: string, 
-  writeType: 'withResponse' | 'withoutResponse' = 'withResponse',
-  address: string
+  writeType: 'withResponse' | 'withoutResponse' = 'withResponse'
 ) {
   await invoke('plugin:blec|send_string', {
+    address,
     characteristic,
     data,
-    writeType,
-    address
+    writeType
   })
 }
 
 /**
  * Read bytes from a BLE characteristic on a specific device
+ * @param address Address of the device to read from
  * @param characteristic UUID of the characteristic to read from
- * @param address Optional address of the device to read from. If not provided, reads from the first connected device
  */
-export async function read(characteristic: string, address: string): Promise<Uint8Array> {
+export async function read(address: string, characteristic: string): Promise<Uint8Array> {
   let res = await invoke<Uint8Array>('plugin:blec|read', {
-    characteristic,
-    address
+    address,
+    characteristic
   })
   return res
 }
 
 /**
  * Read a string from a BLE characteristic on a specific device
+ * @param address Address of the device to read from
  * @param characteristic UUID of the characteristic to read from
- * @param address Optional address of the device to read from. If not provided, reads from the first connected device
  */
-export async function readString(characteristic: string, address: string): Promise<string> {
+export async function readString(address: string, characteristic: string): Promise<string> {
   let res = await invoke<string>('plugin:blec|read_string', {
-    characteristic,
-    address
+    address,
+    characteristic
   })
   return res
 }
 
 /**
  * Unsubscribe from a BLE characteristic on a specific device
+ * @param address Address of the device to unsubscribe from
  * @param characteristic UUID of the characteristic to unsubscribe from
- * @param address Optional address of the device to unsubscribe from. If not provided, unsubscribes from the first connected device
  */
-export async function unsubscribe(characteristic: string, address: string) {
+export async function unsubscribe(address: string, characteristic: string) {
   await invoke('plugin:blec|unsubscribe', {
-    characteristic,
-    address
+    address,
+    characteristic
   })
 }
 
 /**
  * Subscribe to a BLE characteristic on a specific device
+ * @param address Address of the device to subscribe to
  * @param characteristic UUID of the characteristic to subscribe to
  * @param handler Callback function that will be called with the data received for every notification
- * @param address Optional address of the device to subscribe to. If not provided, subscribes to the first connected device
  */
-export async function subscribe(characteristic: string, handler: (data: Uint8Array) => void, address: string) {
+export async function subscribe(address: string, characteristic: string, handler: (data: Uint8Array) => void) {
   let onData = new Channel<Uint8Array>()
   onData.onmessage = handler;
   await invoke('plugin:blec|subscribe', {
+    address,
     characteristic,
-    onData,
-    address
+    onData
   })
 }
 
 /**
  * Subscribe to a BLE characteristic on a specific device. Converts the received data to a string
+ * @param address Address of the device to subscribe to
  * @param characteristic UUID of the characteristic to subscribe to
  * @param handler Callback function that will be called with the data received for every notification
- * @param address Optional address of the device to subscribe to. If not provided, subscribes to the first connected device
  */
-export async function subscribeString(characteristic: string, address: string, handler: (data: string) => void) {
+export async function subscribeString(address: string, characteristic: string, handler: (data: string) => void) {
   let onData = new Channel<string>()
   onData.onmessage = handler;
   await invoke('plugin:blec|subscribe_string', {
-    characteristic,
     address,
+    characteristic,
     onData
   })
 }

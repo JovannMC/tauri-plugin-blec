@@ -74,11 +74,27 @@ const showServices = ref(false);
       </div>
       <div class="row">
         <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
-        <button class="ml" :onclick="async () => recvData = await readString(characteristicUuid, device.address)">Read</button>
+        <button class="ml" :onclick="async () => {
+            try {
+              recvData = await readString(device.address, characteristicUuid)
+              console.log(`Read data (string): ${recvData}`)
+              if (typeof recvData === 'string') {
+                const hex = Array.from(recvData, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+                console.log(`Read data (hex): ${hex}`)
+              } else {
+                const str = new TextDecoder('utf-8').decode(recvData)
+                const hex = Array.from(str, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+                console.log(`Read data (string): ${str}`)
+                console.log(`Read data (hex): ${hex}`)
+              }
+            } catch (e) {
+              console.error(`Error reading data: ${e}`)
+            }
+        }">Read</button>
       </div>
       <div class="row">
-        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
-        <button class="ml" :onclick="() => sendString(device.address, characteristicUuid, sendData)">Send</button>
+        <input v-model="sendData" placeholder="Data to send" class="uuid-input" />
+        <button class="ml" :onclick="() => sendString(device.address, characteristicUuid, sendData, 'withoutResponse')">Send</button>
       </div>
       <div class="row">
         <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
@@ -100,6 +116,38 @@ const showServices = ref(false);
             console.log('connect command returned');
           }"
         />
+      </div>
+    </div>
+    <!-- Received Data Section -->
+    <div style="margin-top: 2em; text-align: center;">
+      <h2>Received Data</h2>
+      <div v-if="recvData">
+      <strong>Read (String):</strong>
+      {{
+        typeof recvData === 'string'
+        ? recvData
+        : new TextDecoder('utf-8').decode(recvData)
+      }}
+      <br />
+      <strong>Read (Hex):</strong>
+      {{
+        (() => {
+        const str = typeof recvData === 'string' ? recvData : new TextDecoder('utf-8').decode(recvData)
+        return Array.from(str, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+        })()
+      }}
+      </div>
+      <div v-if="notifyData">
+      <strong>Notification (String):</strong>
+      {{ notifyData }}
+      <br />
+      <strong>Notification (Hex):</strong>
+      {{
+        Array.from(notifyData, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+      }}
+      </div>
+      <div v-if="!recvData && !notifyData">
+      <em>No data received yet.</em>
       </div>
     </div>
   </div>
