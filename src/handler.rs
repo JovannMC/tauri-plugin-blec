@@ -608,6 +608,37 @@ impl Handler {
         }
     }
 
+    /// Discover provided services and characteristics
+    /// If the device is not connected, a connection is made in order to discover the services and characteristics
+    /// After the discovery is done, the device is disconnected
+    /// If the devices was already connected, it will stay connected
+    /// # Errors
+    /// Returns an error if the device is not found, if the connection fails, or if the discovery fails
+    /// # Panics
+    /// Panics if there is an error with the internal disconnect event
+    pub async fn discover_services(
+        &self,
+        address: &str,
+    ) -> Result<Vec<Service>, Error> {
+        debug!("Discovering services for device {address}");
+
+        // Get the peripheral
+        let devices = self.connected_devices.read().await;
+        let state = devices.get(address).ok_or(Error::NoDeviceConnected)?;
+
+        // If the device is not connected, connect it
+        if !state.peripheral.is_connected().await? {
+            self.connect_device(address).await?;
+        }
+
+        // Discover services
+        state.peripheral.discover_services().await?;
+
+        // Get the services and characteristics
+        let services = state.peripheral.services().iter().map(Service::from).collect();
+        Ok(services)
+    }
+
     /// Start scanning for devices
     /// Duration is in milliseconds
     /// # Errors
