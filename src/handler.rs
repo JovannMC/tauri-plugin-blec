@@ -36,7 +36,9 @@ struct DeviceState {
 struct HandlerState {
     connection_update_channels: Vec<mpsc::Sender<(String, bool)>>,
     scan_update_channels: Vec<mpsc::Sender<bool>>,
+    device_scan_channels: Vec<mpsc::Sender<BleDevice>>,
     scan_task: Option<tokio::task::JoinHandle<()>>,
+    scan_stream_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl HandlerState {
@@ -44,7 +46,9 @@ impl HandlerState {
         Self {
             connection_update_channels: vec![],
             scan_update_channels: vec![],
+            device_scan_channels: vec![],
             scan_task: None,
+            scan_stream_task: None,
         }
     }
 }
@@ -212,6 +216,154 @@ impl Handler {
     /// ```
     pub async fn set_connection_update_channel(&self, tx: mpsc::Sender<(String, bool)>) {
         self.state.lock().await.connection_update_channels.push(tx);
+    }
+
+    /// Takes a sender that will be used to send discovered devices during streaming scan
+    /// # Example
+    /// ```no_run
+    /// use tauri::async_runtime;
+    /// use tokio::sync::mpsc;
+    /// async_runtime::block_on(async {
+    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
+    ///     let (tx, mut rx) = mpsc::channel(1);
+    ///     handler.set_scan_channel(tx).await;
+    ///     while let Some(device) = rx.recv().await {
+    ///         println!("Discovered device: {:?}", device);
+    ///     }
+    /// });
+    /// ```
+    pub async fn set_scan_channel(&self, tx: mpsc::Sender<BleDevice>) {
+        self.state.lock().await.device_scan_channels.push(tx);
+    }
+
+    /// Start continuous scanning for devices by streaming
+    /// Devices will be sent to registered scan channels as they are found
+    /// # Errors
+    /// Returns an error if scanning is already in progress, or if scanning fails
+    pub async fn start_scan_stream(&self, filter: Option<ScanFilter>) -> Result<(), Error> {
+        debug!("Starting device scan stream");
+
+        let state = self.state.lock().await;
+        if let Some(task) = &state.scan_stream_task {
+            if !task.is_finished() {
+                debug!("Scan stream already in progress");
+                return Err(Error::ScanAlreadyRunning);
+            }
+        }
+        drop(state);
+
+        self.devices.lock().await.clear();
+
+        let btleplug_filter = match &filter {
+            Some(ScanFilter::None) | None => btleplug::api::ScanFilter { services: vec![] },
+            Some(ScanFilter::Service(uuid)) => btleplug::api::ScanFilter {
+                services: vec![*uuid],
+            },
+            Some(ScanFilter::AnyService(uuids)) | Some(ScanFilter::AllServices(uuids)) => {
+                btleplug::api::ScanFilter {
+                    services: uuids.clone(),
+                }
+            }
+            // ManufacturerData filters can't be mapped to btleplug::ScanFilter directly
+            Some(ScanFilter::ManufacturerData(_, _))
+            | Some(ScanFilter::ManufacturerDataMasked(_, _, _)) => {
+                btleplug::api::ScanFilter { services: vec![] }
+            }
+        };
+
+        debug!("Starting continuous scan");
+        self.adapter.start_scan(btleplug_filter).await?;
+        self.send_scan_update(true).await;
+        let adapter_clone = self.adapter.clone();
+        let devices_clone = self.devices.clone();
+        let scan_filter_clone = filter.clone();
+
+        let scan_channels = {
+            let state = self.state.lock().await;
+            state.device_scan_channels.clone()
+        };
+
+        let scan_stream_task = tokio::spawn(async move {
+            debug!("Scan stream task started");
+
+            let mut events = adapter_clone.events().await.unwrap();
+
+            while let Some(event) = events.next().await {
+                match event {
+                    CentralEvent::DeviceDiscovered(id) => {
+                        debug!("Device discovered: {:?}", id);
+
+                        if let Ok(peripheral) = adapter_clone.peripheral(&id).await {
+                            if let Ok(Some(properties)) = peripheral.properties().await {
+                                let address = fmt_addr(properties.address);
+                                {
+                                    let mut devices = devices_clone.lock().await;
+                                    devices.insert(address.clone(), peripheral.clone());
+                                }
+                                if let Ok(ble_device) =
+                                    BleDevice::from_peripheral(&peripheral).await
+                                {
+                                    let mut should_send = true;
+                                    if let Some(filter) = &scan_filter_clone {
+                                        let mut devices_to_filter = vec![peripheral.clone()];
+                                        filter_peripherals(&mut devices_to_filter, filter).await;
+                                        should_send = !devices_to_filter.is_empty();
+                                    }
+                                    if should_send {
+                                        for tx in &scan_channels {
+                                            if let Err(e) = tx.send(ble_device.clone()).await {
+                                                warn!("Failed to send discovered device: {e}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            debug!("Scan stream task ended");
+        });
+
+        self.state.lock().await.scan_stream_task = Some(scan_stream_task);
+
+        Ok(())
+    }
+
+    /// Stops device scan stream
+    /// # Errors
+    /// Returns an error if stopping the scan fails
+    pub async fn stop_scan_stream(&self) -> Result<(), Error> {
+        debug!("Stopping device scan stream");
+
+        let scan_update_channels = {
+            let state = self.state.lock().await;
+            state.scan_update_channels.clone()
+        };
+
+        let mut state = self.state.lock().await;
+        if let Some(task) = state.scan_stream_task.take() {
+            if !task.is_finished() {
+                debug!("Aborting scan stream task");
+                task.abort();
+            }
+        }
+
+        if let Err(e) = self.adapter.stop_scan().await {
+            warn!("Failed to stop scan: {e}");
+        }
+
+        drop(state);
+        for tx in &scan_update_channels {
+            if let Err(e) = tx.send(false).await {
+                warn!("Failed to send scan update: {e}");
+            }
+        }
+        let _ = self.scanning_tx.send(false);
+
+        debug!("Scan stream stopped");
+        Ok(())
     }
 
     /// Connects to the given address
@@ -616,10 +768,7 @@ impl Handler {
     /// Returns an error if the device is not found, if the connection fails, or if the discovery fails
     /// # Panics
     /// Panics if there is an error with the internal disconnect event
-    pub async fn discover_services(
-        &self,
-        address: &str,
-    ) -> Result<Vec<Service>, Error> {
+    pub async fn discover_services(&self, address: &str) -> Result<Vec<Service>, Error> {
         debug!("Discovering services for device {address}");
 
         // Get the peripheral
@@ -635,7 +784,12 @@ impl Handler {
         state.peripheral.discover_services().await?;
 
         // Get the services and characteristics
-        let services = state.peripheral.services().iter().map(Service::from).collect();
+        let services = state
+            .peripheral
+            .services()
+            .iter()
+            .map(Service::from)
+            .collect();
         Ok(services)
     }
 

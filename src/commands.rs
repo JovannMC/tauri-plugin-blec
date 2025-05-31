@@ -9,7 +9,7 @@ use crate::{get_handler, Error};
 use crate::models::{BleDevice, ScanFilter, WriteType};
 
 #[command]
-pub(crate) async fn scan<R: Runtime>(
+pub(crate) async fn start_scan<R: Runtime>(
     _app: AppHandle<R>,
     filter: Option<ScanFilter>,
     timeout: u64,
@@ -290,9 +290,47 @@ pub(crate) async fn get_connected_devices<R: Runtime>(_app: AppHandle<R>) -> Res
     Ok(devices)
 }
 
+#[command]
+pub(crate) async fn start_scan_stream<R: Runtime>(
+    _app: AppHandle<R>,
+    filter: Option<ScanFilter>,
+    on_device: Channel<BleDevice>,
+) -> Result<()> {
+    tracing::info!("Starting BLE device scan stream");
+    let handler = get_handler()?;
+
+    // Set up device scan channel
+    let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+    handler.set_scan_channel(tx).await;
+
+    // Start scan stream
+    handler.start_scan_stream(filter).await?;
+
+    // Forward scanned devices to frontend
+    async_runtime::spawn(async move {
+        while let Some(device) = rx.recv().await {
+            debug!("Sending scanned device to frontend: {:?}", device.address);
+            on_device
+                .send(device)
+                .expect("failed to send scanned device to the front-end");
+        }
+        warn!("Device scan channel closed");
+    });
+
+    Ok(())
+}
+
+#[command]
+pub(crate) async fn stop_scan_stream<R: Runtime>(_app: AppHandle<R>) -> Result<()> {
+    tracing::info!("Stopping BLE device scan stream");
+    let handler = get_handler()?;
+    handler.stop_scan_stream().await?;
+    Ok(())
+}
+
 pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool {
     tauri::generate_handler![
-        scan,
+        start_scan,
         stop_scan,
         connect,
         disconnect,
@@ -306,6 +344,8 @@ pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool {
         unsubscribe,
         scanning_state,
         check_permissions,
-        get_connected_devices
+        get_connected_devices,
+        start_scan_stream,
+        stop_scan_stream
     ]
 }

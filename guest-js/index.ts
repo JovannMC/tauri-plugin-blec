@@ -10,6 +10,14 @@ export type BleDevice = {
   serviceData: Record<string, Uint8Array>;
 };
 
+export type ScanFilter = 
+  | { type: 'none' }
+  | { type: 'service'; uuid: string }
+  | { type: 'anyService'; uuids: string[] }
+  | { type: 'allServices'; uuids: string[] }
+  | { type: 'manufacturerData'; key: number; value: Uint8Array }
+  | { type: 'manufacturerDataMasked'; key: number; value: Uint8Array; mask: Uint8Array };
+
 /**
   * Scan for BLE devices
   * @param handler - A function that will be called with an array of devices found during the scan
@@ -21,7 +29,7 @@ export async function startScan(handler: (devices: BleDevice[]) => void, timeout
   }
   let onDevices = new Channel<BleDevice[]>();
   onDevices.onmessage = handler;
-  await invoke<BleDevice[]>('plugin:blec|scan', {
+  await invoke<BleDevice[]>('plugin:blec|start_scan', {
     timeout,
     onDevices
   })
@@ -40,6 +48,30 @@ export async function stopScan() {
   */
 export async function checkPermissions(): Promise<boolean> {
   return await invoke<boolean>('plugin:blec|check_permissions')
+}
+
+/**
+ * Start device scan stream
+ * @param handler - A function that will be called for each device discovered
+ * @param filter - Optional scan filter to filter discovered devices
+ */
+export async function startScanStream(
+  handler: (device: BleDevice) => void, 
+  filter?: ScanFilter
+) {
+  let onDevice = new Channel<BleDevice>();
+  onDevice.onmessage = handler;
+  await invoke('plugin:blec|start_scan_stream', {
+    filter,
+    onDevice
+  });
+}
+
+/**
+ * Stop device scan stream
+ */
+export async function stopScanStream() {
+  await invoke('plugin:blec|stop_scan_stream');
 }
 
 /**

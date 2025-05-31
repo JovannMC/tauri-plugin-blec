@@ -1,6 +1,8 @@
 const COMMANDS: &[&str] = &[
-    "scan",
+    "start_scan",
     "stop_scan",
+    "start_scan_stream",
+    "stop_scan_stream",
     "connect",
     "disconnect",
     "connection_state",

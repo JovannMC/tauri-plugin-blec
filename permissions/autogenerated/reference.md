@@ -4,8 +4,10 @@ Default permissions for the plugin
 
 #### This default permission set includes the following:
 
-- `allow-scan`
+- `allow-start-scan`
 - `allow-stop-scan`
+- `allow-start-scan-stream`
+- `allow-stop-scan-stream`
 - `allow-connect`
 - `allow-disconnect`
 - `allow-connection-state`
@@ -264,7 +266,7 @@ Denies the recv_string command without any pre-configured scope.
 <tr>
 <td>
 
-`blec:allow-scan`
+`blec:allow-start-scan`
 
 </td>
 <td>
@@ -277,7 +279,7 @@ Enables the scan command without any pre-configured scope.
 <tr>
 <td>
 
-`blec:deny-scan`
+`blec:deny-start-scan`
 
 </td>
 <td>
@@ -368,6 +370,58 @@ Denies the send_string command without any pre-configured scope.
 <tr>
 <td>
 
+`blec:allow-start-scan`
+
+</td>
+<td>
+
+Enables the start_scan command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:deny-start-scan`
+
+</td>
+<td>
+
+Denies the start_scan command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:allow-start-scan-stream`
+
+</td>
+<td>
+
+Enables the start_scan_stream command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:deny-start-scan-stream`
+
+</td>
+<td>
+
+Denies the start_scan_stream command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `blec:allow-stop-scan`
 
 </td>
@@ -387,6 +441,32 @@ Enables the stop_scan command without any pre-configured scope.
 <td>
 
 Denies the stop_scan command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:allow-stop-scan-stream`
+
+</td>
+<td>
+
+Enables the stop_scan_stream command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`blec:deny-stop-scan-stream`
+
+</td>
+<td>
+
+Denies the stop_scan_stream command without any pre-configured scope.
 
 </td>
 </tr>
