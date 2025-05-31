@@ -639,14 +639,47 @@ impl Handler {
     /// });
     /// ```
 
-    /// Start scanning for devices with the given filter
+    /// Discover provided services and characteristics
+    /// If the device is not connected, a connection is made in order to discover the services and characteristics
+    /// After the discovery is done, the device is disconnected
+    /// If the devices was already connected, it will stay connected
+    /// # Errors
+    /// Returns an error if the device is not found, if the connection fails, or if the discovery fails
+    /// # Panics
+    /// Panics if there is an error with the internal disconnect event
+    pub async fn discover_services(&self, address: &str) -> Result<Vec<Service>, Error> {
+        debug!("Discovering services for device {address}");
+
+        // Get the peripheral
+        let devices = self.connected_devices.read().await;
+        let state = devices.get(address).ok_or(Error::NoDeviceConnected)?;
+
+        // If the device is not connected, connect it
+        if !state.peripheral.is_connected().await? {
+            self.connect_device(address).await?;
+        }
+
+        // Discover services
+        state.peripheral.discover_services().await?;
+
+        // Get the services and characteristics
+        let services = state
+            .peripheral
+            .services()
+            .iter()
+            .map(Service::from)
+            .collect();
+        Ok(services)
+    }
+
+    /// Start scanning for devices for a certain duration, then stopping.
     /// Duration is in milliseconds
     /// # Errors
     /// Returns an error if scanning is already in progress, or if scanning fails
-    pub async fn discover(
+    pub async fn start_scan(
         &self,
-        duration: u64,
         scan_filter: ScanFilter,
+        duration: u64,
     ) -> Result<Vec<BleDevice>, Error> {
         debug!("Discover called for duration of {duration}ms");
 
@@ -758,52 +791,6 @@ impl Handler {
                 Err(Error::ScanFailed)
             }
         }
-    }
-
-    /// Discover provided services and characteristics
-    /// If the device is not connected, a connection is made in order to discover the services and characteristics
-    /// After the discovery is done, the device is disconnected
-    /// If the devices was already connected, it will stay connected
-    /// # Errors
-    /// Returns an error if the device is not found, if the connection fails, or if the discovery fails
-    /// # Panics
-    /// Panics if there is an error with the internal disconnect event
-    pub async fn discover_services(&self, address: &str) -> Result<Vec<Service>, Error> {
-        debug!("Discovering services for device {address}");
-
-        // Get the peripheral
-        let devices = self.connected_devices.read().await;
-        let state = devices.get(address).ok_or(Error::NoDeviceConnected)?;
-
-        // If the device is not connected, connect it
-        if !state.peripheral.is_connected().await? {
-            self.connect_device(address).await?;
-        }
-
-        // Discover services
-        state.peripheral.discover_services().await?;
-
-        // Get the services and characteristics
-        let services = state
-            .peripheral
-            .services()
-            .iter()
-            .map(Service::from)
-            .collect();
-        Ok(services)
-    }
-
-    /// Start scanning for devices
-    /// Duration is in milliseconds
-    /// # Errors
-    /// Returns an error if scanning is already in progress, or if scanning fails
-    pub async fn start_scan(
-        &self,
-        filter: Option<ScanFilter>,
-        duration: u64,
-    ) -> Result<Vec<BleDevice>, Error> {
-        self.discover(duration, filter.unwrap_or(ScanFilter::None))
-            .await
     }
 
     /// Stop any ongoing scan

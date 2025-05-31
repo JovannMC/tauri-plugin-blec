@@ -11,7 +11,7 @@ use crate::models::{BleDevice, ScanFilter, WriteType};
 #[command]
 pub(crate) async fn start_scan<R: Runtime>(
     _app: AppHandle<R>,
-    filter: Option<ScanFilter>,
+    filter: ScanFilter,
     timeout: u64,
     on_devices: Channel<Vec<BleDevice>>,
 ) -> Result<()> {
