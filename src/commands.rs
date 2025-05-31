@@ -197,7 +197,7 @@ pub(crate) async fn read_string<R: Runtime>(
     address: String,
     characteristic: String,
 ) -> Result<String> {
-    let data = read(app, characteristic, address).await?;
+    let data = read(app, address, characteristic).await?;
     Ok(String::from_utf8(data).expect("failed to convert data to string"))
 }
 

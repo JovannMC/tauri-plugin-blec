@@ -1,45 +1,63 @@
 <script setup lang="ts">
 // This starter template is using Vue 3 <script setup> SFCs
 // Check out https://vuejs.org/api/sfc-script-setup.html#script-setup
-import { BleDevice, getConnectionUpdates, startScan, sendString, readString, unsubscribe, subscribeString, stopScan, connect, disconnect, getScanningUpdates } from '@mnlphlp/plugin-blec'
-import { onMounted, ref } from 'vue';
-import BleDev from './components/BleDev.vue'
-import { invoke } from '@tauri-apps/api/core'
+import {
+  BleDevice,
+  getConnectionUpdates,
+  startScan,
+  sendString,
+  readString,
+  unsubscribe,
+  subscribeString,
+  stopScan,
+  connect,
+  disconnect,
+  getScanningUpdates,
+} from "@mnlphlp/plugin-blec";
+import { onMounted, ref } from "vue";
+import BleDev from "./components/BleDev.vue";
+import { invoke } from "@tauri-apps/api/core";
 
-const devices = ref<BleDevice[]>([])
-const device = ref<BleDevice | null>(null)
-const connected = ref(false)
-const scanning = ref(false)
+const devices = ref<BleDevice[]>([]);
+const device = ref<BleDevice | null>(null);
+const connected = ref(false);
+const scanning = ref(false);
 
 onMounted(async () => {
-  await getConnectionUpdates((state) => connected.value = state)
+  await getConnectionUpdates(
+    (_address: string, state: boolean) => (connected.value = state)
+  );
   await getScanningUpdates((state) => {
-    console.log('Scanning:', state)
-    scanning.value = state
-  })
-})
+    console.log("Scanning:", state);
+    scanning.value = state;
+  });
+});
 
-const sendData = ref('')
-const recvData = ref('')
-const characteristicUuid = ref('51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B')
-const rustTest = ref(false)
+const sendData = ref("");
+const recvData = ref("");
+const characteristicUuid = ref("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B");
+const rustTest = ref(false);
 
-const notifyData = ref('')
+const notifyData = ref("");
 async function subscribe() {
   if (notifyData.value) {
-    unsubscribe(characteristicUuid, device.address)
-    notifyData.value = ''
+    unsubscribe(characteristicUuid.value, device.value!.address);
+    notifyData.value = "";
   } else {
-    subscribeString(characteristicUuid, device.address, (data: string) => notifyData.value = data)
+    subscribeString(
+      characteristicUuid.value,
+      device.value!.address,
+      (data: string) => (notifyData.value = data)
+    );
   }
 }
 
 async function test() {
   try {
-    let resp = await invoke<boolean>('test')
-    rustTest.value = resp
+    let resp = await invoke<boolean>("test");
+    rustTest.value = resp;
   } catch (e) {
-    console.error(e)
+    console.error(e);
   }
 }
 
@@ -50,7 +68,7 @@ const showServices = ref(false);
   <div class="container">
     <h1>Welcome to the blec plugin!</h1>
 
-    <button v-if="scanning" :onclick="stopScan" style="margin-bottom: 5px;">
+    <button v-if="scanning" :onclick="stopScan" style="margin-bottom: 5px">
       Stop Scan
       <div class="lds-ring">
         <div></div>
@@ -59,24 +77,38 @@ const showServices = ref(false);
         <div></div>
       </div>
     </button>
-    <button v-else :onclick="() => startScan((dev: BleDevice[]) => devices = dev, 5000)" style="margin-bottom: 5px;">
+    <button
+      v-else
+      :onclick="() => startScan((dev: BleDevice[]) => devices = dev, 5000)"
+      style="margin-bottom: 5px"
+    >
       Start Scan
     </button>
     <div v-if="connected">
       <p>Connected</p>
       <div class="row">
-        <button :onclick="disconnect" style="margin-bottom: 5px;">Disconnect</button>
+        <button :onclick="disconnect" style="margin-bottom: 5px">
+          Disconnect
+        </button>
       </div>
       <div>
-        {{ rustTest ? 'Rust test successful' : '' }}
+        {{ rustTest ? "Rust test successful" : "" }}
         <br />
-        <button :onclick="test" style="margin-bottom: 5px;">Test Rust communication</button>
+        <button :onclick="test" style="margin-bottom: 5px">
+          Test Rust communication
+        </button>
       </div>
       <div class="row">
-        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
-        <button class="ml" :onclick="async () => {
+        <input
+          v-model="characteristicUuid"
+          placeholder="Characteristic UUID"
+          class="uuid-input"
+        />
+        <button
+          class="ml"
+          :onclick="async () => {
             try {
-              recvData = await readString(device.address, characteristicUuid)
+              recvData = await readString(device!.address, characteristicUuid)
               console.log(`Read data (string): ${recvData}`)
               if (typeof recvData === 'string') {
                 const hex = Array.from(recvData, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
@@ -90,64 +122,93 @@ const showServices = ref(false);
             } catch (e) {
               console.error(`Error reading data: ${e}`)
             }
-        }">Read</button>
+        }"
+        >
+          Read
+        </button>
       </div>
       <div class="row">
-        <input v-model="sendData" placeholder="Data to send" class="uuid-input" />
-        <button class="ml" :onclick="() => sendString(device.address, characteristicUuid, sendData, 'withoutResponse')">Send</button>
+        <input
+          v-model="sendData"
+          placeholder="Data to send"
+          class="uuid-input"
+        />
+        <button
+          class="ml"
+          :onclick="() => sendString(device!.address, characteristicUuid, sendData, 'withoutResponse')"
+        >
+          Send
+        </button>
       </div>
       <div class="row">
-        <input v-model="characteristicUuid" placeholder="Characteristic UUID" class="uuid-input" />
-        <button class="ml" :onclick="subscribe">{{ notifyData ? "Unsubscribe" : "Subscribe" }}</button>
+        <input
+          v-model="characteristicUuid"
+          placeholder="Characteristic UUID"
+          class="uuid-input"
+        />
+        <button class="ml" :onclick="subscribe">
+          {{ notifyData ? "Unsubscribe" : "Subscribe" }}
+        </button>
       </div>
     </div>
     <div v-else>
       <label id="show-services-label" for="show-services">Show Services</label>
       <input v-model="showServices" type="checkbox" id="show-services" />
       <div v-for="bleDevice in devices" class="row">
-        <BleDev :key="bleDevice.address" :device="bleDevice"
-          :show-services="showServices" 
-          :onclick="async () => {
-            device = bleDevice;
-            await connect(bleDevice.address, () => {
-              console.log('disconnected');
-              device = null;
-            });
-            console.log('connect command returned');
-          }"
+        <BleDev
+          :key="bleDevice.address"
+          :device="bleDevice"
+          :show-services="showServices"
+          :onclick="
+            async () => {
+              device = bleDevice;
+              await connect(bleDevice.address, () => {
+                console.log('disconnected');
+                device = null;
+              });
+              console.log('connect command returned');
+            }
+          "
         />
       </div>
     </div>
     <!-- Received Data Section -->
-    <div style="margin-top: 2em; text-align: center;">
+    <div style="margin-top: 2em; text-align: center">
       <h2>Received Data</h2>
       <div v-if="recvData">
-      <strong>Read (String):</strong>
-      {{
-        typeof recvData === 'string'
-        ? recvData
-        : new TextDecoder('utf-8').decode(recvData)
-      }}
-      <br />
-      <strong>Read (Hex):</strong>
-      {{
-        (() => {
-        const str = typeof recvData === 'string' ? recvData : new TextDecoder('utf-8').decode(recvData)
-        return Array.from(str, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
-        })()
-      }}
+        <strong>Read (String):</strong>
+        {{
+          typeof recvData === "string"
+            ? recvData
+            : new TextDecoder("utf-8").decode(recvData)
+        }}
+        <br />
+        <strong>Read (Hex):</strong>
+        {{
+          (() => {
+            const str =
+              typeof recvData === "string"
+                ? recvData
+                : new TextDecoder("utf-8").decode(recvData);
+            return Array.from(str, (c) =>
+              c.charCodeAt(0).toString(16).padStart(2, "0")
+            ).join(" ");
+          })()
+        }}
       </div>
       <div v-if="notifyData">
-      <strong>Notification (String):</strong>
-      {{ notifyData }}
-      <br />
-      <strong>Notification (Hex):</strong>
-      {{
-        Array.from(notifyData, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
-      }}
+        <strong>Notification (String):</strong>
+        {{ notifyData }}
+        <br />
+        <strong>Notification (Hex):</strong>
+        {{
+          Array.from(notifyData, (c) =>
+            c.charCodeAt(0).toString(16).padStart(2, "0")
+          ).join(" ")
+        }}
       </div>
       <div v-if="!recvData && !notifyData">
-      <em>No data received yet.</em>
+        <em>No data received yet.</em>
       </div>
     </div>
   </div>
@@ -287,7 +348,6 @@ button {
 button:active {
   background-color: #0f0f0f69;
 }
-
 
 .lds-ring,
 .lds-ring div {
