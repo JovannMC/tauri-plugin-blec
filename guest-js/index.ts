@@ -10,13 +10,13 @@ export type BleDevice = {
   serviceData: Record<string, Uint8Array>;
 };
 
-export type ScanFilter = 
-  | { type: 'none' }
-  | { type: 'service'; uuid: string }
-  | { type: 'anyService'; uuids: string[] }
-  | { type: 'allServices'; uuids: string[] }
-  | { type: 'manufacturerData'; key: number; value: Uint8Array }
-  | { type: 'manufacturerDataMasked'; key: number; value: Uint8Array; mask: Uint8Array };
+export type ScanFilter =
+  | { None: {} }
+  | { Service: { uuid: string } }
+  | { AnyService: { uuids: string[] } }
+  | { AllServices: { uuids: string[] } }
+  | { ManufacturerData: { key: number; value: Uint8Array } }
+  | { ManufacturerDataMasked: { key: number; value: Uint8Array; mask: Uint8Array } };
 
 /**
   * Scan for BLE devices
@@ -30,6 +30,7 @@ export async function startScan(handler: (devices: BleDevice[]) => void, timeout
   let onDevices = new Channel<BleDevice[]>();
   onDevices.onmessage = handler;
   await invoke<BleDevice[]>('plugin:blec|start_scan', {
+    filter: "None",
     timeout,
     onDevices
   })

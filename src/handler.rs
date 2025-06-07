@@ -183,55 +183,16 @@ impl Handler {
     }
 
     /// Takes a sender that will be used to send changes in the scanning status
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use tokio::sync::mpsc;
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let (tx, mut rx) = mpsc::channel(1);
-    ///     handler.set_scanning_update_channel(tx).await;
-    ///     while let Some(scanning) = rx.recv().await {
-    ///         println!("Scanning: {scanning}");
-    ///     }
-    /// });
-    /// ```
     pub async fn set_scanning_update_channel(&self, tx: mpsc::Sender<bool>) {
         self.state.lock().await.scan_update_channels.push(tx);
     }
 
     /// Takes a sender that will be used to send changes in the connection status
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use tokio::sync::mpsc;
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let (tx, mut rx) = mpsc::channel(1);
-    ///     handler.set_connection_update_channel(tx).await;
-    ///     while let Some(connected) = rx.recv().await {
-    ///         println!("Connected: {connected}");
-    ///     }
-    /// });
-    /// ```
     pub async fn set_connection_update_channel(&self, tx: mpsc::Sender<(String, bool)>) {
         self.state.lock().await.connection_update_channels.push(tx);
     }
 
     /// Takes a sender that will be used to send discovered devices during streaming scan
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use tokio::sync::mpsc;
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let (tx, mut rx) = mpsc::channel(1);
-    ///     handler.set_scan_channel(tx).await;
-    ///     while let Some(device) = rx.recv().await {
-    ///         println!("Discovered device: {:?}", device);
-    ///     }
-    /// });
-    /// ```
     pub async fn set_scan_channel(&self, tx: mpsc::Sender<BleDevice>) {
         self.state.lock().await.device_scan_channels.push(tx);
     }
@@ -373,14 +334,6 @@ impl Handler {
     /// # Errors
     /// Returns an error if no devices are found, if the device is already connected,
     /// if the connection fails, or if the service/characteristics discovery fails
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// async_runtime::block_on(async {
-    ///    let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///    handler.connect("00:00:00:00:00:00", (|| println!("disconnected")).into()).await.unwrap();
-    /// });
-    /// ```
     pub async fn connect(
         &'static self,
         address: &str,
@@ -612,33 +565,6 @@ impl Handler {
         Ok(())
     }
 
-    /// Scans for `timeout` milliseconds and periodically sends discovered devices
-    /// to the given channel.
-    /// A task is spawned to handle the scan and send the devices, so the function
-    /// returns immediately.
-    ///
-    /// A Variant of [`ScanFilter`] can be provided to filter the discovered devices
-    ///
-    /// # Errors
-    /// Returns an error if starting the scan fails
-    /// # Panics
-    /// Panics if there is an error getting devices from the adapter
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use tokio::sync::mpsc;
-    /// use tauri_plugin_blec::models::ScanFilter;
-    ///
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let (tx, mut rx) = mpsc::channel(1);
-    ///     handler.discover(Some(tx),1000, ScanFilter::None).await.unwrap();
-    ///     while let Some(devices) = rx.recv().await {
-    ///         println!("Discovered {devices:?}");
-    ///     }
-    /// });
-    /// ```
-
     /// Discover provided services and characteristics
     /// If the device is not connected, a connection is made in order to discover the services and characteristics
     /// After the discovery is done, the device is disconnected
@@ -849,20 +775,6 @@ impl Handler {
     /// # Errors
     /// Returns an error if no device is connected or the characteristic is not available
     /// or if the write operation fails
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use uuid::{Uuid,uuid};
-    /// use tauri_plugin_blec::models::WriteType;
-    ///
-    /// const address : &str = "00:00:00:00:00:00";
-    /// const CHARACTERISTIC_UUID: Uuid = uuid!("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B");
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let data = [1,2,3,4,5];
-    ///     let response = handler.send_data(address, CHARACTERISTIC_UUID, &data, WriteType::WithResponse).await.unwrap();
-    /// });
-    /// ```
     pub async fn send_data(
         &self,
         address: &str,
@@ -895,17 +807,6 @@ impl Handler {
     /// # Errors
     /// Returns an error if no device is connected or the characteristic is not available
     /// or if the read operation fails
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use uuid::{Uuid,uuid};
-    /// const ADDRESS = "00:00:00:00:00:00";
-    /// const CHARACTERISTIC_UUID: Uuid = uuid!("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B");
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let response = handler.read(ADDRESS, CHARACTERISTIC_UUID).await.unwrap();
-    /// });
-    /// ```
     pub async fn read_data(&self, address: &str, c: Uuid) -> Result<Vec<u8>, Error> {
         debug!("Reading data from {c} on device {address}");
 
@@ -929,16 +830,6 @@ impl Handler {
     /// # Errors
     /// Returns an error if no device is connected or the characteristic is not available
     /// or if the subscribe operation fails
-    /// # Example
-    /// ```no_run
-    /// use tauri::async_runtime;
-    /// use uuid::{Uuid,uuid};
-    /// const CHARACTERISTIC_UUID: Uuid = uuid!("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B");
-    /// async_runtime::block_on(async {
-    ///     let handler = tauri_plugin_blec::get_handler().unwrap();
-    ///     let response = handler.subscribe(CHARACTERISTIC_UUID,|data| println!("received {data:?}")).await.unwrap();
-    /// });
-    /// ```
     pub async fn subscribe(
         &self,
         address: &str,
